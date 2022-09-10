@@ -8,7 +8,7 @@
 - if using PI:
   - change `Device` in `mavlink_router.conf` to `Device = /dev/ttyAMA2`
   - change `bridge -d` in `Dockerfile` to `-d /dev/ttyAMA1`
-  - change alias for bridge in .bashrc to /dev/ttyAMA1
+  - inn docker, change alias for bridge in .bashrc to /dev/ttyAMA1
 - if using JETSON:
   - change `Device` in `mavlink_router.conf` to `Device = /dev/ttyUSB0`
   - change `bridge -d` in `Dockerfile` to `-d /dev/ttyTHS2`
