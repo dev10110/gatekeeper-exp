@@ -26,5 +26,6 @@
 - get stuff running on the ground station
 - `docker compose up &`
 - `docker exec -it robot-jumpstart-px4-1 bash`
+- `colcon build --symlink-install`
 - `mavlink-routerd &`
 - `bridge`
