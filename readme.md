@@ -27,5 +27,6 @@
 - `docker compose up &`
 - `docker exec -it robot-jumpstart-px4-1 bash`
 - `colcon build --symlink-install`
+- `source install/setup.bash`
 - `mavlink-routerd &`
 - `bridge`
