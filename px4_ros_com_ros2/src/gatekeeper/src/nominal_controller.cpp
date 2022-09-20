@@ -31,13 +31,14 @@ public:
     start_time = this->get_clock()->now();
 
     traj_pub_ = this->create_publisher<dasc_msgs::msg::QuadTrajectory>(
-        "/nominal_trajectory", 10);
+        //"/committed_trajectory", 10);
+	"/nominal_trajectory", 10);
 
     timer_ = this->create_wall_timer(
         500ms, std::bind(&NominalController::timer_callback, this));
 
     path_pub_ =
-        this->create_publisher<nav_msgs::msg::Path>("nominal_path_viz", 10);
+        this->create_publisher<nav_msgs::msg::Path>("nominal_traj_viz", 10);
 
     publish_one_trajectory();
   }
@@ -89,10 +90,13 @@ private:
 		  msg.xs.push_back( (1-f) * start_x + f * end_x);
 		  msg.ys.push_back( (1-f) * start_y + f * end_y);
 		  msg.zs.push_back( (1-f) * start_z + f * end_z);
-		  msg.zs.push_back( (1-f) * start_yaw + f * end_yaw);
+		  msg.yaws.push_back( (1-f) * start_yaw + f * end_yaw);
 		  msg.vxs.push_back( 0.0);
 		  msg.vys.push_back( 0.0);
 		  msg.vzs.push_back( 0.0);
+		  msg.axs.push_back( 0.0);
+		  msg.ays.push_back( 0.0);
+		  msg.azs.push_back( 0.0);
 
 	  }
 
@@ -122,30 +126,30 @@ private:
     key_z.push_back(1.0);
     key_yaw.push_back(0.0);
 
-    // scan 360
-    key_t.push_back(key_t.back() + 5.0);
-    key_x.push_back(key_x.back());
-    key_y.push_back(key_y.back());
-    key_z.push_back(key_z.back());
-    key_yaw.push_back(M_PI/2);
+    // // scan 360
+    // key_t.push_back(key_t.back() + 5.0);
+    // key_x.push_back(key_x.back());
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(key_z.back());
+    // key_yaw.push_back(M_PI/2);
 
-    key_t.push_back(key_t.back() + 5.0);
-    key_x.push_back(key_x.back());
-    key_y.push_back(key_y.back());
-    key_z.push_back(key_z.back());
-    key_yaw.push_back(M_PI);
+    // key_t.push_back(key_t.back() + 5.0);
+    // key_x.push_back(key_x.back());
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(key_z.back());
+    // key_yaw.push_back(M_PI);
 
-    key_t.push_back(key_t.back() + 5.0);
-    key_x.push_back(key_x.back());
-    key_y.push_back(key_y.back());
-    key_z.push_back(key_z.back());
-    key_yaw.push_back(M_PI*1.5);
+    // key_t.push_back(key_t.back() + 5.0);
+    // key_x.push_back(key_x.back());
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(key_z.back());
+    // key_yaw.push_back(M_PI*1.5);
 
-    key_t.push_back(key_t.back() + 5.0);
-    key_x.push_back(key_x.back());
-    key_y.push_back(key_y.back());
-    key_z.push_back(key_z.back());
-    key_yaw.push_back(0.0);
+    // key_t.push_back(key_t.back() + 5.0);
+    // key_x.push_back(key_x.back());
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(key_z.back());
+    // key_yaw.push_back(0.0);
 
     // move forward 
     key_t.push_back(key_t.back() + 15.0);
@@ -162,20 +166,20 @@ private:
     key_yaw.push_back(0.0);
     
     
-    // move down 
-    key_t.push_back(key_t.back() + 5.0);
-    key_x.push_back(key_x.back());
-    key_y.push_back(key_y.back());
-    key_z.push_back(0.5);
-    key_yaw.push_back(0.0);
-    
-    
-    // move forward 
-    key_t.push_back(key_t.back() + 15.0);
-    key_x.push_back(1.0);
-    key_y.push_back(key_y.back());
-    key_z.push_back(key_z.back());
-    key_yaw.push_back(0.0);
+    // // move down 
+    // key_t.push_back(key_t.back() + 5.0);
+    // key_x.push_back(key_x.back());
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(0.5);
+    // key_yaw.push_back(0.0);
+    // 
+    // 
+    // // move forward 
+    // key_t.push_back(key_t.back() + 15.0);
+    // key_x.push_back(1.0);
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(key_z.back());
+    // key_yaw.push_back(0.0);
 
 
 
@@ -184,7 +188,7 @@ private:
     for (size_t i =0; i < key_x.size() -1; i++){
 	    append_move(msg, key_x[i], key_y[i], key_z[i], key_yaw[i],
 			    key_x[i+1], key_y[i+1], key_z[i+1], key_yaw[i+1],
-			    key_t[i], key_t[i+1], 0.01);
+			    key_t[i], key_t[i+1], 0.2);
     }
 
 

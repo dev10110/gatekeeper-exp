@@ -40,7 +40,7 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
 
   m_vehicleLocalPositionSub =
       this->create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-          "/drone6/fmu/vehicle_local_position/out", 10,
+          "/drone4/fmu/vehicle_local_position/out", 10,
           std::bind(&Gatekeeper::localPosition_callback, this, ph::_1));
 
   m_targetSub = this->create_subscription<dasc_msgs::msg::QuadSetpoint>(
@@ -136,7 +136,7 @@ void Gatekeeper::publish_extended_traj(
 void Gatekeeper::assume_free_space() {
 
   RCLCPP_INFO(this->get_logger(), "here");
-  for (double x = -1.0; x <= 1.0; x += 0.05) {
+  for (double x = -2.0; x <= 0.0; x += 0.05) {
     for (double y = -1.0; y <= 1.0; y += 0.05) {
       for (double z = 0.0; z <= 2.0; z += 0.05) {
         m_octree->updateNode(x, y, z, (float)-0.9, true);
@@ -150,7 +150,6 @@ void Gatekeeper::assume_free_space() {
 
 void Gatekeeper::cloud_callback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-
 
   auto start = std::chrono::steady_clock::now();
 
@@ -247,6 +246,7 @@ bool Gatekeeper::isSafe(double x, double y, double z, double r) {
 // returns the largest number of steps in P that can be safe
 bool Gatekeeper::isSafe(dyn::Trajectory P) {
 
+return true;
 
   double R = m_safety_radius; // margin radius
 
@@ -450,6 +450,9 @@ void Gatekeeper::nominalTraj_callback(
     }
   }
 
+  if (P.ts.size() == 0) { return; }
+
+
   // simulate and extend dynamics
   dyn::Trajectory P_ext =
       dyn::simulate_extend_hover(0.0, last_quad_state, P, 50, 400, 0.01);
@@ -524,12 +527,12 @@ void Gatekeeper::publish_occupied_pcl() {
   // transform pcl to the world frame
   geometry_msgs::msg::TransformStamped sensorToWorldTf;
 
-  std::string fromFrameRel = "vicon/drone6";
+  std::string fromFrameRel = "vicon/drone4";
   std::string toFrameRel = "world";
 
   try {
     sensorToWorldTf = m_buffer_->lookupTransform(toFrameRel, fromFrameRel,
-                                                 tf2::TimePointZero);
+                                                 tf2::TimePointZero, 100ms);
   } catch (tf2::TransformException &ex) {
     RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
                 toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());

@@ -148,7 +148,7 @@ private:
 
     // get the transform
     try {
-      transformStamped = tf_buffer_->lookupTransform("world", "vicon/drone6",
+      transformStamped = tf_buffer_->lookupTransform("world", "vicon/drone4",
                                                      tf2::TimePointZero, 100ms);
 
       last_x = transformStamped.transform.translation.x;
@@ -158,7 +158,7 @@ private:
 
     } catch (tf2::TransformException &ex) {
       RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
-                  "drone6", "world", ex.what());
+                  "drone4", "world", ex.what());
       return;
     }
 
