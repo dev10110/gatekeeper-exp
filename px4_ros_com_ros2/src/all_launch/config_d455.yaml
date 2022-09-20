@@ -1,0 +1,27 @@
+camera:
+  camera:
+    ros__parameters:
+      
+      pointcloud.enable: true
+      pointcloud.allow_no_texture_points: false
+      
+      decimation_filter.enable: true
+      decimation_filter.filter_magnitude: 8
+
+      temporal_filter.enable: false
+
+
+      clip_distance: 20.0
+
+      colorizer.enable: false
+
+      enable_accel: false
+      enable_color: true
+      enable_gyro: false
+      enable_sync: false
+      enable_infra1: false
+      enable_infra2: false
+
+      hdr_merge.enable: false
+
+      depth_module.profile: "848,480,15"     

@@ -4,3 +4,6 @@
 [submodule "px4_ros_com_ros2/src/px4_ros_com"]
 	path = px4_ros_com_ros2/src/px4_ros_com
 	url = https://github.com/dasc-lab/px4_ros_com.git
+[submodule "px4_ros_com_ros2/src/robot-framework"]
+	path = px4_ros_com_ros2/src/robot-framework
+	url = git@github.com:dasc-lab/robot-framework

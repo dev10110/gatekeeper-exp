@@ -4,16 +4,23 @@ SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get install -y --no-install-recommends vim tmux
 
+RUN apt-get install -y --no-install-recommends \
+  ros-galactic-realsense2-camera
 
-WORKDIR /root/dasc/px4_ros_com_ros2
+RUN apt-get install -y --no-install-recommends \
+  libboost-all-dev
 
-COPY  px4_ros_com_ros2/src/px4_ros_com ./src/px4_ros_com
-COPY  px4_ros_com_ros2/src/px4_msgs    ./src/px4_msgs
+RUN apt-get install -y --no-install-recommends \
+  libpcl-dev 
 
-WORKDIR "/root/dasc/px4_ros_com_ros2"
+RUN apt-get install -y --no-install-recommends \
+  ros-galactic-pcl-conversions
 
-RUN source /opt/ros/galactic/setup.bash && colcon build --symlink-install 
+RUN apt-get install -y --no-install-recommends \
+  ros-galactic-octomap ros-galactic-octomap-mapping
 
-RUN echo "source /opt/ros/galactic/setup.bash" >> ~/.bashrc
-RUN echo "source /root/dasc/px4_ros_com_ros2/install/setup.bash" >> ~/.bashrc
-RUN echo 'alias bridge="micrortps_agent -d /dev/ttyTHS2 -b 921600 -n ${ROBOT_NAME}"' >> ~/.bashrc
+RUN rm -rf /var/lib/apt/lists
+
+RUN echo "source /opt/ros/galactic/setup.bash" >> /root/.bashrc
+
+
