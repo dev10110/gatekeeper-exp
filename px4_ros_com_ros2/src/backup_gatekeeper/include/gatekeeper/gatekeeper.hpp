@@ -6,12 +6,10 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <dasc_msgs/msg/quad_setpoint.hpp>
 #include <dasc_msgs/msg/quad_trajectory.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-
 
 #include <octomap/octomap.h>
 #include <pcl/common/distances.h>
@@ -52,7 +50,6 @@ protected:
       m_nominalTrajSub;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       m_vehicleLocalPositionSub;
-  rclcpp::Subscription<dasc_msgs::msg::QuadSetpoint>::SharedPtr m_targetSub;
 
   rclcpp::Publisher<dasc_msgs::msg::QuadTrajectory>::SharedPtr
       m_committedTrajPub;
@@ -64,7 +61,6 @@ protected:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr occupied_pcl_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr free_pcl_pub_;
   rclcpp::TimerBase::SharedPtr pub_timer_;
-  rclcpp::TimerBase::SharedPtr traj_timer_;
 
   // octree
   std::shared_ptr<OcTreeT> m_octree;
@@ -76,8 +72,7 @@ protected:
   std::mutex mutex_octree;
 
   // parameters
-  double m_res = 0.05;
-  double m_voxel_leaf_size = 0.01;
+  double m_res = 0.1;
   int m_treeDepth = 16;
   int m_maxTreeDepth = 16;
   int m_searchDepth = 16;
@@ -88,19 +83,14 @@ protected:
   double thresMax = 0.97;
   double numMax = std::numeric_limits<double>::max();
   double numMin = -std::numeric_limits<double>::max();
-  double m_zmin = 0.0;
-  double m_zmax = 3.0;
-  double m_safety_radius = 0.15;
 
   std::string m_worldFrameId = "world";
 
+  uint8_t drop_msg = 0;
 
   // storage
   rclcpp::Time last_pos_t;
   dyn::State last_quad_state{};
-  dyn::State target{};
-  bool received_target = false;
-  uint8_t drop_msg = 0;
 
   // functions
   void insertScan(const geometry_msgs::msg::Vector3 &sensorOrigin,
@@ -110,12 +100,6 @@ protected:
 
   void
   nominalTraj_callback(const dasc_msgs::msg::QuadTrajectory::SharedPtr msg);
-
-  void target_callback(const dasc_msgs::msg::QuadSetpoint::SharedPtr msg);
-  
-  void traj_timer_callback();
-
-
 
   void localPosition_callback(
       const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);

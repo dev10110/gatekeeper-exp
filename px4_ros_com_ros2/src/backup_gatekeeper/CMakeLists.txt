@@ -66,7 +66,7 @@ install(TARGETS
 )
 
 
-add_executable(joystick_controller src/joystick_controller.cpp src/dynamics.cpp)
+add_executable(joystick_controller src/joystick_controller.cpp)
 ament_target_dependencies(joystick_controller
   dasc_msgs
   sensor_msgs
@@ -82,8 +82,6 @@ install(TARGETS
   joystick_controller
   DESTINATION lib/${PROJECT_NAME}
 )
-
-
 add_executable(gatekeeper
        	src/gatekeeper.cpp
 	src/transforms.cpp

@@ -10,3 +10,6 @@ float64[] vxs
 float64[] vys
 float64[] vzs
 
+float64[] axs
+float64[] ays
+float64[] azs

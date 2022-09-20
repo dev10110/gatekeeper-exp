@@ -40,8 +40,6 @@ Input tracking_controller(State &x, State &x_des);
 Trajectory simulate_hover(double t0, State &x0, State &x_des, float dt,
                           size_t N);
 
-Trajectory simulate_target_hover(double t0, State &x0, State & target,
-                                 size_t N_nom, size_t N_ext, double dt);
 Trajectory simulate_extend_hover(double t0, State &x0, Trajectory &P_nom,
                                  size_t N_nom, size_t N_ext, double dt);
 

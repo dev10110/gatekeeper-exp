@@ -29,7 +29,7 @@ def generate_launch_description():
     static_tf_node = Node(
             package="tf2_ros",
             executable="static_transform_publisher",
-            arguments=['0','0','0', '0', '0','0.0',   '/vicon/drone4', '/camera_link']
+            arguments=['0','0','0.1', '0', '0','0.0',   '/vicon/drone6', '/camera_link']
             )
 
     trajectory_follower = Node(
@@ -39,7 +39,14 @@ def generate_launch_description():
 
     gatekeeper_node = Node(
         package="gatekeeper",
-        executable="gatekeeper"
+        executable="gatekeeper",
+        parameters=[
+            {"octomap/m_res": 0.05},
+            {"octomap/m_zmin": -0.25},
+            {"octomap/m_zmax": 3.0}, 
+            {"voxel/leaf_size": 0.025},
+            {"gatekeeper/safety_radius": 0.15}
+        ]
         )
 
     return LaunchDescription([

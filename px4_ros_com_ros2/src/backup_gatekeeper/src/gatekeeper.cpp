@@ -12,22 +12,6 @@ namespace gatekeeper {
 
 Gatekeeper::Gatekeeper() : Node("gatekeeper") {
 
-  // rclcpp::Parameter simTime("use_sim_time", rclcpp::ParameterValue(true));
-  // this->set_parameter(simTime);
-
-  // parameters
-  this->declare_parameter<double>("octomap/m_res", 0.05);
-  this->declare_parameter<double>("octomap/m_zmin", -0.25);
-  this->declare_parameter<double>("octomap/m_zmax", 3.0);
-  this->declare_parameter<double>("voxel/leaf_size", 0.01);
-  this->declare_parameter<double>("gatekeeper/safety_radius", 0.15);
-
-  this->get_parameter("octomap/m_res", m_res);
-  this->get_parameter("octomap/m_zmin", m_zmin);
-  this->get_parameter("octomap/m_zmax", m_zmax);
-  this->get_parameter("voxel/leaf_size", m_voxel_leaf_size);
-  this->get_parameter("gatekeeper/safety_radius", m_safety_radius);
-
   // initialize pubs and subs
 
   m_pointCloudSub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -40,12 +24,8 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
 
   m_vehicleLocalPositionSub =
       this->create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-          "/drone6/fmu/vehicle_local_position/out", 10,
+          "/drone4/fmu/vehicle_local_position/out", 10,
           std::bind(&Gatekeeper::localPosition_callback, this, ph::_1));
-
-  m_targetSub = this->create_subscription<dasc_msgs::msg::QuadSetpoint>(
-      "/target_setpoint", 10,
-      std::bind(&Gatekeeper::target_callback, this, ph::_1));
 
   m_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
 
@@ -69,10 +49,6 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
   pub_timer_ = this->create_wall_timer(
       500ms, std::bind(&Gatekeeper::publish_occupied_pcl, this));
 
-  traj_timer_ = this->create_wall_timer(
-      100ms, std::bind(&Gatekeeper::traj_timer_callback, this));
-  
-
   // initialize octomap
   m_octree = std::make_shared<OcTreeT>(m_res);
   m_octree->setProbHit(probHit);
@@ -83,7 +59,7 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
   m_searchDepth = 0;
   for (int i = 0; i < 17; i++) {
     double s = m_octree->getNodeSize(i);
-    if (s > 0.15) {
+    if (s > 0.05) {
       m_searchDepth = i;
     } else {
       break;
@@ -100,19 +76,9 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
 
   pass_x.setFilterLimits(numMin, numMax);
   pass_y.setFilterLimits(numMin, numMax);
-  pass_z.setFilterLimits(m_zmin, m_zmax);
+  pass_z.setFilterLimits(numMin, numMax);
 
   drop_msg = 0;
-
-  // initialize target
-  target.x = 0.0;
-  target.y = 0.0;
-  target.z = 1.0;
-  target.yaw = 0.0;
-  target.vx = 0.0;
-  target.vy = 0.0;
-  target.vz = 0.0;
-  received_target = true;
 }
 
 void Gatekeeper::publish_committed_traj(
@@ -128,7 +94,7 @@ void Gatekeeper::publish_committed_traj(
 void Gatekeeper::publish_extended_traj(
     const dasc_msgs::msg::QuadTrajectory msg) {
 
-  RCLCPP_INFO(this->get_logger(), "extended trajectory published");
+  RCLCPP_INFO(this->get_logger(), "extened trajectory published");
   nav_msgs::msg::Path path = dasc_msgs::msg::toPathMsg(msg);
   m_extTrajVizPub->publish(path);
 }
@@ -136,9 +102,9 @@ void Gatekeeper::publish_extended_traj(
 void Gatekeeper::assume_free_space() {
 
   RCLCPP_INFO(this->get_logger(), "here");
-  for (double x = -1.0; x <= 1.0; x += 0.05) {
+  for (double x = 0.0; x <= 2.0; x += 0.05) {
     for (double y = -1.0; y <= 1.0; y += 0.05) {
-      for (double z = 0.0; z <= 2.0; z += 0.05) {
+      for (double z = 0.5; z <= 1.5; z += 0.05) {
         m_octree->updateNode(x, y, z, (float)-0.9, true);
       }
     }
@@ -150,7 +116,6 @@ void Gatekeeper::assume_free_space() {
 
 void Gatekeeper::cloud_callback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-
 
   auto start = std::chrono::steady_clock::now();
 
@@ -171,7 +136,9 @@ void Gatekeeper::cloud_callback(
 
   try {
     sensorToWorldTf =
-        m_buffer_->lookupTransform(toFrameRel, fromFrameRel, msg->header.stamp, 200ms);
+        m_buffer_->lookupTransform(toFrameRel, fromFrameRel, 
+			//tf2::TimePointZero);
+			msg->header.stamp, 100ms);
   } catch (tf2::TransformException &ex) {
     RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
                 toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
@@ -188,10 +155,10 @@ void Gatekeeper::cloud_callback(
   // pass_x.filter(pc);
   // pass_y.setInputCloud(pc.makeShared());
   // pass_y.filter(pc);
-  pass_z.setInputCloud(pc.makeShared());
-  pass_z.filter(pc);
+  // pass_z.setInputCloud(pc.makeShared());
+  // pass_z.filter(pc);
 
-  // naive implementation of z filter/
+  // naive implementation of z filter
   // PCLPointCloud filtered;
   // for (const auto & point : pc.points){
   //  if (point.z > numMin && point.z < numMax){
@@ -202,7 +169,7 @@ void Gatekeeper::cloud_callback(
   // downsample pointcloud
   pcl::VoxelGrid<PCLPoint> vox;
   vox.setInputCloud(pc.makeShared());
-  vox.setLeafSize(m_voxel_leaf_size, m_voxel_leaf_size, m_voxel_leaf_size);
+  vox.setLeafSize(0.01, 0.01, 0.01);
   vox.filter(pc);
 
   insertScan(sensorToWorldTf.transform.translation, pc);
@@ -247,8 +214,7 @@ bool Gatekeeper::isSafe(double x, double y, double z, double r) {
 // returns the largest number of steps in P that can be safe
 bool Gatekeeper::isSafe(dyn::Trajectory P) {
 
-
-  double R = m_safety_radius; // margin radius
+  double R = 0.10; // margin radius
 
   size_t N = P.ts.size();
 
@@ -325,9 +291,6 @@ dasc_msgs::msg::QuadTrajectory direct_copy(dyn::Trajectory P, int i = -1) {
     msg.vys.push_back(P.xs[i].vy);
     msg.vzs.push_back(P.xs[i].vz);
     msg.yaws.push_back(P.xs[i].yaw);
-    msg.axs.push_back(P.us[i].ax);
-    msg.ays.push_back(P.us[i].ay);
-    msg.azs.push_back(P.us[i].az);
   }
 
   return msg;
@@ -354,7 +317,7 @@ void Gatekeeper::localPosition_callback(
     const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
 
   // does the frame conversion here
-  last_pos_t = this->get_clock()->now(); // msg->header.stamp;
+  // last_pos_t = msg->header.stamp;
   last_quad_state.x = msg->y;
   last_quad_state.y = msg->x;
   last_quad_state.z = -msg->z;
@@ -364,77 +327,26 @@ void Gatekeeper::localPosition_callback(
   last_quad_state.yaw = dyn::clampToPi(0.5 * M_PI - msg->heading);
 }
 
-
-void Gatekeeper::target_callback( const dasc_msgs::msg::QuadSetpoint::SharedPtr msg) {
-
-  target.x = msg->x;
-  target.y = msg->y;
-  target.z = msg->z;
-  target.vx = 0.0;
-  target.vy = 0.0;
-  target.vz = 0.0;
-  target.yaw = msg->yaw;
-
-
-  received_target = true;
-
-}
-
-void Gatekeeper::traj_timer_callback() {
-
-	return;
-
-
-  if (!received_target) { return; }
-
-  // forward simulate on the last quad state
-
-
-  // dyn::Trajectory P_ext = simulate_target_hover(0.0, last_quad_state, target, 50, 400, 0.01);
-  dyn::Trajectory P_ext = simulate_target_hover(0.0, last_quad_state, target, 50, 400, 0.01);
-
-  // publish the extended trajectory
-  dasc_msgs::msg::QuadTrajectory ext_msg = direct_copy(P_ext);
-  ext_msg.header.stamp = last_pos_t;
-  ext_msg.header.frame_id = "world";
-  publish_extended_traj(ext_msg);
-
-  // check if the trajectory is safe
-  if (!isSafe(P_ext))
-    return;
-
-  // yes trajectory is safe, so publish
-  dasc_msgs::msg::QuadTrajectory com_msg = direct_copy(P_ext);
-  com_msg.header = ext_msg.header;
-  publish_committed_traj(com_msg);
-
-}
-
 void Gatekeeper::nominalTraj_callback(
     const dasc_msgs::msg::QuadTrajectory::SharedPtr nom_msg) {
+
 
   auto now_ = this->get_clock()->now();
 
   double t0 = (now_ - nom_msg->header.stamp).seconds();
 
-  // RCLCPP_INFO(this->get_logger(), "t0: %f, t_back: %f", t0,
-  // nom_msg->ts.back());
+  //RCLCPP_INFO(this->get_logger(), "t0: %f, t_back: %f", t0, nom_msg->ts.back());
 
   if (t0 > nom_msg->ts.back()) {
     // committed message is too old - ignore
-    RCLCPP_INFO(this->get_logger(),
-                "[REJECTING] nominal trajectory is too old");
+    RCLCPP_INFO(this->get_logger(), "[REJECTING] nominal trajectory is too old");
     return;
   }
-
-  double delta = (last_pos_t - rclcpp::Time(nom_msg->header.stamp)).seconds();
-  // RCLCPP_INFO(this->get_logger(), "New nom delta %f", delta);
 
   // copy over the data that is new
   dyn::Trajectory P;
   for (size_t i = 0; i < nom_msg->ts.size(); i++) {
-    if (nom_msg->ts[i] >= t0)
-    {
+    if (nom_msg->ts[i] >= t0) {
       P.ts.push_back(nom_msg->ts[i]);
       dyn::State x{nom_msg->xs[i],
                    nom_msg->ys[i],
@@ -456,19 +368,13 @@ void Gatekeeper::nominalTraj_callback(
 
   {
     // print the extended
-   //  RCLCPP_INFO(this->get_logger(), "EXT INIT: (%f, %f, %f) (%f, %f, %f)",
-   //              P_ext.xs[0].x, P_ext.xs[0].y, P_ext.xs[0].z, P_ext.xs[0].vx,
-   //              P_ext.xs[0].vy, P_ext.xs[0].vz);
-   //  RCLCPP_INFO(this->get_logger(), "EXT FIN: (%f, %f, %f) (%f, %f, %f)",
-   //              P_ext.xs.back().x, P_ext.xs.back().y, P_ext.xs.back().z,
-   //              P_ext.xs.back().vx, P_ext.xs.back().vy, P_ext.xs.back().vz);
     // for (size_t i = 0; i < P_ext.ts.size(); i++) {
 
     // RCLCPP_INFO(this->get_logger(), "%f: (%f, %f, %f)", P_ext.ts[i],
-    //            P_ext.xs[i].x, P_ext.xs[i].y, P_ext.xs[i].z);
+    //    P_ext.xs[i].x, P_ext.xs[i].y, P_ext.xs[i].z);
     // RCLCPP_INFO(this->get_logger(), "%f: %f", P_ext.ts.back(),
-    //            P_ext.xs.back().yaw);
-    //}
+    // P_ext.xs.back().yaw);
+    // }
   }
 
   // publish the extended trajectory
@@ -524,15 +430,15 @@ void Gatekeeper::publish_occupied_pcl() {
   // transform pcl to the world frame
   geometry_msgs::msg::TransformStamped sensorToWorldTf;
 
-  std::string fromFrameRel = "vicon/drone6";
+  std::string fromFrameRel = "vicon/drone4";
   std::string toFrameRel = "world";
 
   try {
     sensorToWorldTf = m_buffer_->lookupTransform(toFrameRel, fromFrameRel,
                                                  tf2::TimePointZero);
   } catch (tf2::TransformException &ex) {
-    RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
-                toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
+    // RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
+    //            toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
     return;
   }
 
@@ -579,8 +485,6 @@ void Gatekeeper::publish_occupied_pcl() {
   msg.header.frame_id = "world";
 
   occupied_pcl_pub_->publish(msg);
-
-  this->publish_free_pcl();
 }
 
 void Gatekeeper::publish_free_pcl() {

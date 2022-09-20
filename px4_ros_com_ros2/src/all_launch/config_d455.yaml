@@ -6,7 +6,7 @@ camera:
       pointcloud.allow_no_texture_points: false
       
       decimation_filter.enable: true
-      decimation_filter.filter_magnitude: 8
+      decimation_filter.filter_magnitude: 4
 
       temporal_filter.enable: false
 

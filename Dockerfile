@@ -21,6 +21,13 @@ RUN apt-get install -y --no-install-recommends \
 
 RUN rm -rf /var/lib/apt/lists
 
+# # install mavlink-router
+# COPY ./mavlink-router /root/mavlink-router
+# WORKDIR /root/mavlink-router
+# RUN meson setup build .
+# RUN ninja -C build install
+
+
 RUN echo "source /opt/ros/galactic/setup.bash" >> /root/.bashrc
-
-
+RUN echo "source /root/px4_ros_com_ros2/install/setup.bash" >> /root/.bashrc
+RUN echo "alias bridge=micrortps_agent -d /dev/ttyTHS2 -b 921600 -n drone6" >> /root/.bashrc
