@@ -31,3 +31,4 @@
 - `mavlink-routerd &`
 - `bridge`
 - setup GQC parameters according to https://dasc-lab.github.io/robot-framework/px4_robots/px4_rover_setup.html
+
