@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import os.path as osp
-
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription, logging
@@ -32,27 +31,32 @@ def generate_launch_description():
             arguments=['0','0','0.1', '0', '0','0.0',   '/vicon/drone4', '/camera_link']
             )
 
-    trajectory_follower = Node(
-  	package="dasc_robot",
-	executable="trajectory_follower"
-	)
-
-    gatekeeper_node = Node(
+    ## gatekeeper's octomapper
+    mapper_node = Node(
         package="gatekeeper",
-        executable="gatekeeper",
+        executable="mapper",
         parameters=[
-            {"octomap/m_res": 0.1},
-            {"octomap/m_zmin": -0.25},
-            {"octomap/m_zmax": 3.0}, 
-            {"voxel/leaf_size": 0.1},
-            {"gatekeeper/safety_radius": 0.2}
+           {"map/m_res": 0.05},
+           {"map/m_zmin": -20.0},
+           {"map/m_zmax": 20.0},
+           {"map/leaf_size": 0.025},
+           {"map/keep_every_n": 1},
+           {"map/free_x_min": -2.0},
+           {"map/free_y_min": -1.0},
+           {"map/free_z_min": 0.0},
+           {"map/free_x_max": 0.0},
+           {"map/free_y_max": 1.0},
+           {"map/free_z_max": 2.0},
+           {"map/publish_radius": 1.5},
+           {"map/publish_occupied_every_ms": 1000},
+           #{"map/publish_unsafe_every_ms": 250},
         ]
         )
 
     return LaunchDescription([
         realsense_launch,
         static_tf_node,
-	# trajectory_follower,
-	gatekeeper_node
+	# mapper_node
         ]
     )
+

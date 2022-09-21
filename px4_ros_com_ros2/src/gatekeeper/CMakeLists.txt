@@ -87,7 +87,7 @@ install(TARGETS
 add_executable(gatekeeper
        	src/gatekeeper.cpp
 	src/transforms.cpp
-  src/dynamics.cpp
+        src/dynamics.cpp
 )
 ament_target_dependencies(gatekeeper
   dasc_msgs
@@ -96,7 +96,6 @@ ament_target_dependencies(gatekeeper
   tf2
   tf2_ros
   rclcpp
-  dasc_msgs
   nav_msgs
   px4_msgs
 )
@@ -104,7 +103,6 @@ ament_target_dependencies(gatekeeper
 
 target_link_libraries(gatekeeper
   ${PCL_LIBRARIES} 
-  ${OCTOMAP_LIBRARIES}
 )
 
 
@@ -114,6 +112,33 @@ install(TARGETS
 )
 
 
+add_executable(mapper
+       	src/mapper.cpp
+	src/transforms.cpp
+  src/dynamics.cpp
+)
+ament_target_dependencies(mapper
+  dasc_msgs
+  sensor_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  rclcpp
+  nav_msgs
+  px4_msgs
+)
+
+
+target_link_libraries(mapper
+  ${PCL_LIBRARIES} 
+  ${OCTOMAP_LIBRARIES}
+)
+
+
+install(TARGETS
+  mapper
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 
 ament_package()

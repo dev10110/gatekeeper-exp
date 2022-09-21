@@ -36,13 +36,13 @@ public:
     // rclcpp::Parameter simTime("use_sim_time", rclcpp::ParameterValue(true));
     // this->set_parameter(simTime);
 
-    //traj_pub_ = this->create_publisher<dasc_msgs::msg::QuadTrajectory>(
+    // traj_pub_ = this->create_publisher<dasc_msgs::msg::QuadTrajectory>(
     //    "/committed_trajectory", 10);
     // "/nominal_trajectory", 10);
 
     traj_pub_ = this->create_publisher<dasc_msgs::msg::QuadSetpoint>(
-     "/target_setpoint", 10);
-    
+        "/target_setpoint", 10);
+
     traj_viz_pub_ =
         this->create_publisher<nav_msgs::msg::Path>("/nominal_traj_viz", 10);
 
@@ -78,9 +78,8 @@ private:
   // rclcpp
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_{nullptr};
-  rclcpp::Publisher<dasc_msgs::msg::QuadSetpoint>::SharedPtr traj_pub_{
-      nullptr};
-  //rclcpp::Publisher<dasc_msgs::msg::QuadTrajectory>::SharedPtr traj_pub_{
+  rclcpp::Publisher<dasc_msgs::msg::QuadSetpoint>::SharedPtr traj_pub_{nullptr};
+  // rclcpp::Publisher<dasc_msgs::msg::QuadTrajectory>::SharedPtr traj_pub_{
   //    nullptr};
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr traj_viz_pub_;
 
@@ -107,7 +106,7 @@ private:
     vel_x = cmd_pitch * std::cos(last_yaw) - cmd_roll * std::sin(last_yaw);
     vel_y = cmd_pitch * std::sin(last_yaw) + cmd_roll * std::cos(last_yaw);
     vel_z = cmd_throttle;
-    vel_t = 2*cmd_yaw;
+    vel_t = 2 * cmd_yaw;
 
     double dt = 0.05;
 
@@ -115,7 +114,6 @@ private:
     target_y += vel_y * dt;
     target_z += vel_z * dt;
     target_yaw += vel_t * dt;
-
 
     if (msg->buttons[1] == 1) {
       // reset target
@@ -126,11 +124,18 @@ private:
       RCLCPP_INFO(this->get_logger(), "RESETING");
     }
 
-
-    if (msg->axes[7] == 1) {target_yaw = 0.0;}
-    if (msg->axes[7] == -1) {target_yaw = -M_PI;}
-    if (msg->axes[6] == -1) {target_yaw = -0.5*M_PI;}
-    if (msg->axes[6] == 1) {target_yaw = 0.5*M_PI;}
+    if (msg->axes[7] == 1) {
+      target_yaw = 0.0;
+    }
+    if (msg->axes[7] == -1) {
+      target_yaw = -M_PI;
+    }
+    if (msg->axes[6] == -1) {
+      target_yaw = -0.5 * M_PI;
+    }
+    if (msg->axes[6] == 1) {
+      target_yaw = 0.5 * M_PI;
+    }
 
     return;
   }
@@ -144,7 +149,6 @@ private:
   }
 
   void timer_callback() {
-
 
     // get the transform
     try {
@@ -183,11 +187,11 @@ private:
                 target_x, target_y, target_z, target_yaw);
     traj_pub_->publish(traj);
 
-    //nav_msgs::msg::Path path = dasc_msgs::msg::toPathMsg(traj);
-    //path.header.stamp = traj.header.stamp;
-    //path.header.frame_id = traj.header.frame_id;
+    // nav_msgs::msg::Path path = dasc_msgs::msg::toPathMsg(traj);
+    // path.header.stamp = traj.header.stamp;
+    // path.header.frame_id = traj.header.frame_id;
 
-    //traj_viz_pub_->publish(path);
+    // traj_viz_pub_->publish(path);
   }
 
 }; // class JoystickController

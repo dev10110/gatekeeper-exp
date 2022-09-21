@@ -22,6 +22,5 @@ camera:
       enable_infra1: false
       enable_infra2: false
 
-      hdr_merge.enable: false
 
       depth_module.profile: "848,480,15"     

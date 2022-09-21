@@ -1,7 +1,7 @@
 /* gatekeeper.cpp
  *
- * this file listens to sensor messages,
- * builds an octomap of the world
+ * this file listens to a pointcloud describing the world,
+ * builds a kd tree
  * and listens to extended trajectories
  * if they are safe, it republishes them as committed trajectories
  */
@@ -16,22 +16,15 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
   // this->set_parameter(simTime);
 
   // parameters
-  this->declare_parameter<double>("octomap/m_res", 0.05);
-  this->declare_parameter<double>("octomap/m_zmin", -0.25);
-  this->declare_parameter<double>("octomap/m_zmax", 3.0);
-  this->declare_parameter<double>("voxel/leaf_size", 0.01);
-  this->declare_parameter<double>("gatekeeper/safety_radius", 0.15);
+  this->declare_parameter<double>("gatekeeper/safety_radius_xy", 0.35);
+  this->declare_parameter<double>("gatekeeper/safety_radius_z", 0.15);
 
-  this->get_parameter("octomap/m_res", m_res);
-  this->get_parameter("octomap/m_zmin", m_zmin);
-  this->get_parameter("octomap/m_zmax", m_zmax);
-  this->get_parameter("voxel/leaf_size", m_voxel_leaf_size);
-  this->get_parameter("gatekeeper/safety_radius", m_safety_radius);
+  this->get_parameter("gatekeeper/safety_radius_xy", m_safety_radius_xy);
+  this->get_parameter("gatekeeper/safety_radius_z", m_safety_radius_z);
 
   // initialize pubs and subs
-
   m_pointCloudSub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "/camera/depth/color/points", 10,
+      "/occupied_pcl", 10,
       std::bind(&Gatekeeper::cloud_callback, this, ph::_1));
 
   m_nominalTrajSub = this->create_subscription<dasc_msgs::msg::QuadTrajectory>(
@@ -43,19 +36,9 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
           "/drone4/fmu/vehicle_local_position/out", 10,
           std::bind(&Gatekeeper::localPosition_callback, this, ph::_1));
 
-  m_targetSub = this->create_subscription<dasc_msgs::msg::QuadSetpoint>(
-      "/target_setpoint", 10,
-      std::bind(&Gatekeeper::target_callback, this, ph::_1));
-
   m_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
 
   m_tf_listener = std::make_unique<tf2_ros::TransformListener>(*m_buffer_);
-
-  occupied_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/occupied_octomap", 2);
-
-  free_pcl_pub_ =
-      this->create_publisher<sensor_msgs::msg::PointCloud2>("/free_octomap", 2);
 
   m_committedTrajPub = this->create_publisher<dasc_msgs::msg::QuadTrajectory>(
       "/committed_trajectory", 10);
@@ -66,53 +49,10 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
   m_committedTrajVizPub =
       this->create_publisher<nav_msgs::msg::Path>("/committed_traj_viz", 5);
 
-  pub_timer_ = this->create_wall_timer(
-      500ms, std::bind(&Gatekeeper::publish_occupied_pcl, this));
+  // traj_timer_ = this->create_wall_timer(
+  //    100ms, std::bind(&Gatekeeper::traj_timer_callback, this));
 
-  traj_timer_ = this->create_wall_timer(
-      100ms, std::bind(&Gatekeeper::traj_timer_callback, this));
-  
-
-  // initialize octomap
-  m_octree = std::make_shared<OcTreeT>(m_res);
-  m_octree->setProbHit(probHit);
-  m_octree->setProbMiss(probMiss);
-  m_octree->setClampingThresMin(thresMin);
-  m_octree->setClampingThresMax(thresMax);
-
-  m_searchDepth = 0;
-  for (int i = 0; i < 17; i++) {
-    double s = m_octree->getNodeSize(i);
-    if (s > 0.15) {
-      m_searchDepth = i;
-    } else {
-      break;
-    }
-  }
-
-  // preinitialize the set of free space
-  assume_free_space();
-
-  // initialize filters
-  pass_x.setFilterFieldName("x");
-  pass_y.setFilterFieldName("y");
-  pass_z.setFilterFieldName("z");
-
-  pass_x.setFilterLimits(numMin, numMax);
-  pass_y.setFilterLimits(numMin, numMax);
-  pass_z.setFilterLimits(m_zmin, m_zmax);
-
-  drop_msg = 0;
-
-  // initialize target
-  target.x = 0.0;
-  target.y = 0.0;
-  target.z = 1.0;
-  target.yaw = 0.0;
-  target.vx = 0.0;
-  target.vy = 0.0;
-  target.vz = 0.0;
-  received_target = true;
+  // initialize kdtree
 }
 
 void Gatekeeper::publish_committed_traj(
@@ -133,182 +73,112 @@ void Gatekeeper::publish_extended_traj(
   m_extTrajVizPub->publish(path);
 }
 
-void Gatekeeper::assume_free_space() {
-
-  RCLCPP_INFO(this->get_logger(), "here");
-  for (double x = -2.0; x <= 0.0; x += 0.05) {
-    for (double y = -1.0; y <= 1.0; y += 0.05) {
-      for (double z = 0.0; z <= 2.0; z += 0.05) {
-        m_octree->updateNode(x, y, z, (float)-0.9, true);
-      }
-    }
-  }
-  m_octree->updateInnerOccupancy();
-
-  RCLCPP_INFO(this->get_logger(), "here");
-}
-
 void Gatekeeper::cloud_callback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
   auto start = std::chrono::steady_clock::now();
 
-  if (drop_msg % 5 != 0) {
-    drop_msg++;
-    return;
-  }
-
   // convert ros msg into pcl
-  PCLPointCloud pc;
   pcl::fromROSMsg(*msg, pc);
 
-  // transform pcl to the world frame
-  geometry_msgs::msg::TransformStamped sensorToWorldTf;
-
-  std::string fromFrameRel = msg->header.frame_id;
-  std::string toFrameRel = "world";
-
-  try {
-    sensorToWorldTf =
-        m_buffer_->lookupTransform(toFrameRel, fromFrameRel, msg->header.stamp, 200ms);
-  } catch (tf2::TransformException &ex) {
-    RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
-                toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
-    return;
-  }
-
-  Eigen::Matrix4f sensorToWorld = pcl_ros::transformAsMatrix(sensorToWorldTf);
-
-  // directly transform to map frame:
-  pcl::transformPointCloud(pc, pc, sensorToWorld);
-
-  // filter the points
-  // pass_x.setInputCloud(pc.makeShared());
-  // pass_x.filter(pc);
-  // pass_y.setInputCloud(pc.makeShared());
-  // pass_y.filter(pc);
-  pass_z.setInputCloud(pc.makeShared());
-  pass_z.filter(pc);
-
-  // naive implementation of z filter/
-  // PCLPointCloud filtered;
-  // for (const auto & point : pc.points){
-  //  if (point.z > numMin && point.z < numMax){
-  //    filtered.push_back(point);
-  //  }
-  //}
-
-  // downsample pointcloud
-  pcl::VoxelGrid<PCLPoint> vox;
-  vox.setInputCloud(pc.makeShared());
-  vox.setLeafSize(m_voxel_leaf_size, m_voxel_leaf_size, m_voxel_leaf_size);
-  vox.filter(pc);
-
-  insertScan(sensorToWorldTf.transform.translation, pc);
+  // insert into kd tree
+  kdtree.setInputCloud(pc.makeShared());
 
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double, std::milli> elapsed_ms = end - start;
 
-  RCLCPP_INFO(this->get_logger(), "insert: %f ms, size: %zu",
-              elapsed_ms.count(), m_octree->size());
+  RCLCPP_INFO(this->get_logger(), "kdtree: %f ms", elapsed_ms.count());
 }
 
 // check if a point is safe
 bool Gatekeeper::isSafe(double x, double y, double z) {
 
-  auto node = m_octree->search(x, y, z, m_searchDepth);
-  if (node == NULL)
+  PCLPoint p(x, y, z);
+
+  int K = 1;
+  std::vector<int> idx(K);
+  std::vector<float> sqdist(K);
+
+  int found = kdtree.nearestKSearch(p, K, idx, sqdist);
+
+  if (found == 0)
+    return true; // no neighhbors in unsafe area
+
+  // check the point
+  PCLPoint q = pc[idx[0]];
+
+  if (std::abs(p.x - q.x) < m_safety_radius_xy) {
     return false;
-  return !(m_octree->isNodeOccupied(node));
+  }
+  if (std::abs(p.y - q.y) < m_safety_radius_xy) {
+    return false;
+  }
+  if (std::abs(p.z - q.z) < m_safety_radius_z) {
+    return false;
+  }
+
+  return true;
 }
 
 // check if a point, and a box around the point are safe
 bool Gatekeeper::isSafe(double x, double y, double z, double r) {
-  // first check the center
-  if (!isSafe(x, y, z))
-    return false;
-  // check all the 3 cardinal directions
-  if (!isSafe(x - r, y, z))
-    return false;
-  if (!isSafe(x + r, y, z))
-    return false;
-  if (!isSafe(x, y - r, z))
-    return false;
-  if (!isSafe(x, y + r, z))
-    return false;
-  if (!isSafe(x, y, z - r))
-    return false;
-  if (!isSafe(x, y, z + r))
-    return false;
+
+  //  // first check the center
+  //  if (!isSafe(x, y, z))
+  //    return false;
+  //  // check all the 3 cardinal directions
+  //  if (!isSafe(x - r, y, z))
+  //    return false;
+  //  if (!isSafe(x + r, y, z))
+  //    return false;
+  //  if (!isSafe(x, y - r, z))
+  //    return false;
+  //  if (!isSafe(x, y + r, z))
+  //    return false;
+  //  if (!isSafe(x, y, z - r))
+  //    return false;
+  //  if (!isSafe(x, y, z + r))
+  //    return false;
   return true;
 }
 
 // returns the largest number of steps in P that can be safe
-bool Gatekeeper::isSafe(dyn::Trajectory P) {
-
-return true;
-
-  double R = m_safety_radius; // margin radius
-
-  size_t N = P.ts.size();
-
-  if (N <= 0)
-    return false;
-
-  // at least one elements in P
-
-  // check the end point - likely to be an intersection
-  if (!isSafe(P.xs[N - 1].x, P.xs[N - 1].y, P.xs[N - 1].z, 2 * R)) {
-    RCLCPP_INFO(this->get_logger(), "[REJECTED] endpoint collides");
-    return false;
-  }
-
-  // check that we have come to a stop at the end
-  double vx = P.xs[N - 1].vx;
-  double vy = P.xs[N - 1].vy;
-  double vz = P.xs[N - 1].vz;
-  double v = vx * vx + vy * vy + vz * vz;
-  if (v > 0.01) {
-    RCLCPP_INFO(this->get_logger(), "[REJECTED] too high speed");
-    return false;
-  } // more than 10cm/s
-
-  // check the rest
-  for (size_t i = 0; i < N - 1; i++) {
-    if (!isSafe(P.xs[i].x, P.xs[i].y, P.xs[i].z, R)) {
-      RCLCPP_INFO(this->get_logger(), "[REJECTED] intermediate pt collides");
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// // returns the largest number of steps in P that can be safe
-// size_t Gatekeeper::isSafe(dyn::Trajectory P) {
+bool Gatekeeper::isSafe(dyn::Trajectory P) { return true; }
 //
-//   size_t maxI = 0;
+//   double R = m_safety_radius; // margin radius
 //
-//   double R = 0.15; // margin
+//   size_t N = P.ts.size();
 //
-//   // check if the trajectory is in free space
-//   for (size_t i = 0; i < P.ts.size(); i++) {
+//   if (N <= 0)
+//     return false;
 //
-//     // the last point has a stricter requirement
-//     double r = ( i == P.ts.size()-1) ? (2*R) : (R);
+//   // at least one elements in P
 //
-//     dyn::State x = P.xs[i];
-//     if ((x.x > 1-r) || (x.x < -1+r))
-//       break;
-//     if ((x.y > 1-r) || (x.y < -1+r))
-//       break;
-//     if ((x.z > 2-r) || (x.z < 0+r))
-//       break;
-//
-//     maxI = i + 1;
+//   // check the end point - likely to be an intersection
+//   if (!isSafe(P.xs[N - 1].x, P.xs[N - 1].y, P.xs[N - 1].z, 2 * R)) {
+//     RCLCPP_INFO(this->get_logger(), "[REJECTED] endpoint collides");
+//     return false;
 //   }
 //
-//   return maxI;
+//   // check that we have come to a stop at the end
+//   double vx = P.xs[N - 1].vx;
+//   double vy = P.xs[N - 1].vy;
+//   double vz = P.xs[N - 1].vz;
+//   double v = vx * vx + vy * vy + vz * vz;
+//   if (v > 0.01) {
+//     RCLCPP_INFO(this->get_logger(), "[REJECTED] too high speed");
+//     return false;
+//   } // more than 10cm/s
+//
+//   // check the rest
+//   for (size_t i = 0; i < N - 1; i++) {
+//     if (!isSafe(P.xs[i].x, P.xs[i].y, P.xs[i].z, R)) {
+//       RCLCPP_INFO(this->get_logger(), "[REJECTED] intermediate pt collides");
+//       return false;
+//     }
+//   }
+//
+//   return true;
 // }
 
 dasc_msgs::msg::QuadTrajectory direct_copy(dyn::Trajectory P, int i = -1) {
@@ -364,51 +234,36 @@ void Gatekeeper::localPosition_callback(
   last_quad_state.yaw = dyn::clampToPi(0.5 * M_PI - msg->heading);
 }
 
-
-void Gatekeeper::target_callback( const dasc_msgs::msg::QuadSetpoint::SharedPtr msg) {
-
-  target.x = msg->x;
-  target.y = msg->y;
-  target.z = msg->z;
-  target.vx = 0.0;
-  target.vy = 0.0;
-  target.vz = 0.0;
-  target.yaw = msg->yaw;
-
-
-  received_target = true;
-
-}
-
-void Gatekeeper::traj_timer_callback() {
-
-	return;
-
-
-  if (!received_target) { return; }
-
-  // forward simulate on the last quad state
-
-
-  // dyn::Trajectory P_ext = simulate_target_hover(0.0, last_quad_state, target, 50, 400, 0.01);
-  dyn::Trajectory P_ext = simulate_target_hover(0.0, last_quad_state, target, 50, 400, 0.01);
-
-  // publish the extended trajectory
-  dasc_msgs::msg::QuadTrajectory ext_msg = direct_copy(P_ext);
-  ext_msg.header.stamp = last_pos_t;
-  ext_msg.header.frame_id = "world";
-  publish_extended_traj(ext_msg);
-
-  // check if the trajectory is safe
-  if (!isSafe(P_ext))
-    return;
-
-  // yes trajectory is safe, so publish
-  dasc_msgs::msg::QuadTrajectory com_msg = direct_copy(P_ext);
-  com_msg.header = ext_msg.header;
-  publish_committed_traj(com_msg);
-
-}
+// void Gatekeeper::traj_timer_callback() {
+//
+// 	return;
+//
+//
+//   if (!received_target) { return; }
+//
+//   // forward simulate on the last quad state
+//
+//
+//   // dyn::Trajectory P_ext = simulate_target_hover(0.0, last_quad_state,
+//   target, 50, 400, 0.01); dyn::Trajectory P_ext = simulate_target_hover(0.0,
+//   last_quad_state, target, 50, 400, 0.01);
+//
+//   // publish the extended trajectory
+//   dasc_msgs::msg::QuadTrajectory ext_msg = direct_copy(P_ext);
+//   ext_msg.header.stamp = last_pos_t;
+//   ext_msg.header.frame_id = "world";
+//   publish_extended_traj(ext_msg);
+//
+//   // check if the trajectory is safe
+//   if (!isSafe(P_ext))
+//     return;
+//
+//   // yes trajectory is safe, so publish
+//   dasc_msgs::msg::QuadTrajectory com_msg = direct_copy(P_ext);
+//   com_msg.header = ext_msg.header;
+//   publish_committed_traj(com_msg);
+//
+// }
 
 void Gatekeeper::nominalTraj_callback(
     const dasc_msgs::msg::QuadTrajectory::SharedPtr nom_msg) {
@@ -433,8 +288,7 @@ void Gatekeeper::nominalTraj_callback(
   // copy over the data that is new
   dyn::Trajectory P;
   for (size_t i = 0; i < nom_msg->ts.size(); i++) {
-    if (nom_msg->ts[i] >= t0)
-    {
+    if (nom_msg->ts[i] >= t0) {
       P.ts.push_back(nom_msg->ts[i]);
       dyn::State x{nom_msg->xs[i],
                    nom_msg->ys[i],
@@ -450,8 +304,9 @@ void Gatekeeper::nominalTraj_callback(
     }
   }
 
-  if (P.ts.size() == 0) { return; }
-
+  if (P.ts.size() == 0) {
+    return;
+  }
 
   // simulate and extend dynamics
   dyn::Trajectory P_ext =
@@ -459,12 +314,12 @@ void Gatekeeper::nominalTraj_callback(
 
   {
     // print the extended
-   //  RCLCPP_INFO(this->get_logger(), "EXT INIT: (%f, %f, %f) (%f, %f, %f)",
-   //              P_ext.xs[0].x, P_ext.xs[0].y, P_ext.xs[0].z, P_ext.xs[0].vx,
-   //              P_ext.xs[0].vy, P_ext.xs[0].vz);
-   //  RCLCPP_INFO(this->get_logger(), "EXT FIN: (%f, %f, %f) (%f, %f, %f)",
-   //              P_ext.xs.back().x, P_ext.xs.back().y, P_ext.xs.back().z,
-   //              P_ext.xs.back().vx, P_ext.xs.back().vy, P_ext.xs.back().vz);
+    //  RCLCPP_INFO(this->get_logger(), "EXT INIT: (%f, %f, %f) (%f, %f, %f)",
+    //              P_ext.xs[0].x, P_ext.xs[0].y, P_ext.xs[0].z, P_ext.xs[0].vx,
+    //              P_ext.xs[0].vy, P_ext.xs[0].vz);
+    //  RCLCPP_INFO(this->get_logger(), "EXT FIN: (%f, %f, %f) (%f, %f, %f)",
+    //              P_ext.xs.back().x, P_ext.xs.back().y, P_ext.xs.back().z,
+    //              P_ext.xs.back().vx, P_ext.xs.back().vy, P_ext.xs.back().vz);
     // for (size_t i = 0; i < P_ext.ts.size(); i++) {
 
     // RCLCPP_INFO(this->get_logger(), "%f: (%f, %f, %f)", P_ext.ts[i],
@@ -486,139 +341,7 @@ void Gatekeeper::nominalTraj_callback(
   // yes trajectory is safe, so publish
   dasc_msgs::msg::QuadTrajectory com_msg = direct_copy(P_ext);
   com_msg.header = nom_msg->header;
-  // m_committedTrajPub->publish(com_msg);
   publish_committed_traj(com_msg);
-}
-
-void Gatekeeper::insertScan(const geometry_msgs::msg::Vector3 &sensorOrigin,
-                            const PCLPointCloud &pc) {
-
-  // make an octomap pointcloud
-  octomap::Pointcloud octomap_pc;
-
-  octomap_pc.reserve(pc.size());
-
-  for (auto it = pc.begin(); it != pc.end(); ++it) {
-    octomap_pc.push_back(it->x, it->y, it->z);
-  }
-
-  // call the octomap insert method
-  octomap::point3d origin(sensorOrigin.x, sensorOrigin.y, sensorOrigin.z);
-
-  // const std::lock_guard<std:://mutex> lock(mutex_octree);
-  // mutex_octree.lock();
-
-  auto start = std::chrono::steady_clock::now();
-  m_octree->insertPointCloud(octomap_pc, origin, m_maxRange);
-
-  auto end = std::chrono::steady_clock::now();
-  std::chrono::duration<double, std::milli> elapsed_ms = end - start;
-
-  // RCLCPP_INFO(this->get_logger(), "insert(): %f ms", elapsed_ms.count());
-
-  // prune map
-  m_octree->prune();
-
-  // mutex_octree.unlock();
-}
-
-void Gatekeeper::publish_occupied_pcl() {
-
-  // transform pcl to the world frame
-  geometry_msgs::msg::TransformStamped sensorToWorldTf;
-
-  std::string fromFrameRel = "vicon/drone4";
-  std::string toFrameRel = "world";
-
-  try {
-    sensorToWorldTf = m_buffer_->lookupTransform(toFrameRel, fromFrameRel,
-                                                 tf2::TimePointZero, 100ms);
-  } catch (tf2::TransformException &ex) {
-    RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s",
-                toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
-    return;
-  }
-
-  double quad_x = sensorToWorldTf.transform.translation.x;
-  double quad_y = sensorToWorldTf.transform.translation.y;
-  double quad_z = sensorToWorldTf.transform.translation.z;
-  PCLPoint q(quad_x, quad_y, quad_z);
-
-  // const std::lock_guard<std:://mutex> lock(mutex_octree);
-  // mutex_octree.lock();
-  // on a timer-callback, we collect the current octomap and republish it
-
-  // if there is no data, dont publish
-  if (m_octree->size() < 1) {
-    RCLCPP_WARN(this->get_logger(),
-                "No points in octree - not publishing pcl yet...");
-    return;
-  }
-
-  const double R = 5.0;
-
-  PCLPointCloud pc;
-  for (auto it = m_octree->begin(m_maxTreeDepth), end = m_octree->end();
-       it != end; ++it) {
-    if (m_octree->isNodeOccupied(*it)) {
-      PCLPoint p(it.getX(), it.getY(), it.getZ());
-      if (p.x > q.x - R && p.x < q.x + R) {
-        if (p.y > q.y - R && p.y < q.y + R) {
-          if (p.z > q.z - R && p.z < q.z + R) {
-            pc.push_back(p);
-          }
-        }
-      }
-    }
-  }
-
-  // mutex_octree.unlock();
-  // convert to ROS msg
-  sensor_msgs::msg::PointCloud2 msg;
-
-  pcl::toROSMsg(pc, msg);
-
-  msg.header.stamp = this->get_clock()->now();
-  msg.header.frame_id = "world";
-
-  occupied_pcl_pub_->publish(msg);
-
-  this->publish_free_pcl();
-}
-
-void Gatekeeper::publish_free_pcl() {
-
-  // on a timer-callback, we collect the current octomap and republish it
-
-  // const std::lock_guard<std:://mutex> lock(mutex_octree);
-  // mutex_octree.lock();
-
-  // if there is no data, dont publish
-  if (m_octree->size() < 1) {
-    RCLCPP_WARN(this->get_logger(),
-                "No points in octree - not publishing pcl yet...");
-    return;
-  }
-
-  PCLPointCloud pc;
-  for (auto it = m_octree->begin(m_maxTreeDepth), end = m_octree->end();
-       it != end; ++it) {
-    if (!(m_octree->isNodeOccupied(*it))) {
-      PCLPoint p(it.getX(), it.getY(), it.getZ());
-      pc.push_back(p);
-    }
-  }
-  // mutex_octree.unlock();
-
-  // convert to ROS msg
-  sensor_msgs::msg::PointCloud2 msg;
-
-  pcl::toROSMsg(pc, msg);
-
-  msg.header.stamp = this->get_clock()->now();
-  msg.header.frame_id = "world";
-
-  free_pcl_pub_->publish(msg);
 }
 
 } // namespace gatekeeper

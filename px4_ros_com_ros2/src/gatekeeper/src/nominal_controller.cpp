@@ -32,7 +32,7 @@ public:
 
     traj_pub_ = this->create_publisher<dasc_msgs::msg::QuadTrajectory>(
         //"/committed_trajectory", 10);
-	"/nominal_trajectory", 10);
+        "/nominal_trajectory", 10);
 
     timer_ = this->create_wall_timer(
         500ms, std::bind(&NominalController::timer_callback, this));
@@ -74,36 +74,30 @@ private:
     return yaw;
   }
 
+  void append_move(dasc_msgs::msg::QuadTrajectory &msg, double start_x,
+                   double start_y, double start_z, double start_yaw,
+                   double end_x, double end_y, double end_z, double end_yaw,
+                   double start_t, double end_t, double dt) {
 
-  void append_move(dasc_msgs::msg::QuadTrajectory & msg, 
-		  double start_x, double start_y, double start_z, double start_yaw,
-		  double end_x,   double end_y,   double end_z,   double end_yaw,
-		  double start_t, double end_t, double dt){
-	  
-	  int N = int(double(end_t - start_t) / dt);
+    int N = int(double(end_t - start_t) / dt);
 
-	  for (int i=0; i <= N; i++){
+    for (int i = 0; i <= N; i++) {
 
-		  double f = double(i) / double(N);
+      double f = double(i) / double(N);
 
-		  msg.ts.push_back( (1-f) * start_t + f * end_t);
-		  msg.xs.push_back( (1-f) * start_x + f * end_x);
-		  msg.ys.push_back( (1-f) * start_y + f * end_y);
-		  msg.zs.push_back( (1-f) * start_z + f * end_z);
-		  msg.yaws.push_back( (1-f) * start_yaw + f * end_yaw);
-		  msg.vxs.push_back( 0.0);
-		  msg.vys.push_back( 0.0);
-		  msg.vzs.push_back( 0.0);
-		  msg.axs.push_back( 0.0);
-		  msg.ays.push_back( 0.0);
-		  msg.azs.push_back( 0.0);
-
-	  }
-
+      msg.ts.push_back((1 - f) * start_t + f * end_t);
+      msg.xs.push_back((1 - f) * start_x + f * end_x);
+      msg.ys.push_back((1 - f) * start_y + f * end_y);
+      msg.zs.push_back((1 - f) * start_z + f * end_z);
+      msg.yaws.push_back((1 - f) * start_yaw + f * end_yaw);
+      msg.vxs.push_back(0.0);
+      msg.vys.push_back(0.0);
+      msg.vzs.push_back(0.0);
+      msg.axs.push_back(0.0);
+      msg.ays.push_back(0.0);
+      msg.azs.push_back(0.0);
+    }
   }
-
-
-
 
   void publish_one_trajectory() {
 
@@ -151,114 +145,123 @@ private:
     // key_z.push_back(key_z.back());
     // key_yaw.push_back(0.0);
 
-    // move forward 
+    // move forward
     key_t.push_back(key_t.back() + 15.0);
     key_x.push_back(1.0);
     key_y.push_back(key_y.back());
     key_z.push_back(key_z.back());
     key_yaw.push_back(0.0);
-    
-    // move back 
+
+    // move back
     key_t.push_back(key_t.back() + 15.0);
     key_x.push_back(0.0);
     key_y.push_back(key_y.back());
     key_z.push_back(key_z.back());
     key_yaw.push_back(0.0);
-    
-    
-    // // move down 
+
+    // // move down
     // key_t.push_back(key_t.back() + 5.0);
     // key_x.push_back(key_x.back());
     // key_y.push_back(key_y.back());
     // key_z.push_back(0.5);
     // key_yaw.push_back(0.0);
-    // 
-    // 
-    // // move forward 
+    //
+    //
+    // // move forward
     // key_t.push_back(key_t.back() + 15.0);
     // key_x.push_back(1.0);
     // key_y.push_back(key_y.back());
     // key_z.push_back(key_z.back());
     // key_yaw.push_back(0.0);
 
+    // // move back
+    // key_t.push_back(key_t.back() + 15.0);
+    // key_x.push_back(0.0);
+    // key_y.push_back(key_y.back());
+    // key_z.push_back(key_z.back());
+    // key_yaw.push_back(0.0);
 
-
+    // move down
+    key_t.push_back(key_t.back() + 5.0);
+    key_x.push_back(key_x.back());
+    key_y.push_back(key_y.back());
+    key_z.push_back(0.05);
+    key_yaw.push_back(0.0);
 
     // construct trajectory!
-    for (size_t i =0; i < key_x.size() -1; i++){
-	    append_move(msg, key_x[i], key_y[i], key_z[i], key_yaw[i],
-			    key_x[i+1], key_y[i+1], key_z[i+1], key_yaw[i+1],
-			    key_t[i], key_t[i+1], 0.2);
+    for (size_t i = 0; i < key_x.size() - 1; i++) {
+      append_move(msg, key_x[i], key_y[i], key_z[i], key_yaw[i], key_x[i + 1],
+                  key_y[i + 1], key_z[i + 1], key_yaw[i + 1], key_t[i],
+                  key_t[i + 1], 0.2);
     }
-
 
     send(msg);
 
-   //  double dt = 0.5;
-   //  double T = 15.0;
+    //  double dt = 0.5;
+    //  double T = 15.0;
 
-   //  double t = 0.0;
-   //  double x = 0.0;
-   //  double vx = 0.5;
+    //  double t = 0.0;
+    //  double x = 0.0;
+    //  double vx = 0.5;
 
-   //  // first T seconds spin around
-   //  while (true) {
-   //    double th = 2.0 * M_PI * t / T;
+    //  // first T seconds spin around
+    //  while (true) {
+    //    double th = 2.0 * M_PI * t / T;
 
-   //    msg.ts.push_back(t);
-   //    msg.xs.push_back(0.0); // R * std::cos(th) - R);
-   //    msg.ys.push_back(0.0); // R * std::sin(th) );
-   //    msg.zs.push_back(1.0);
-   //    msg.vxs.push_back(0.0);
-   //    msg.vys.push_back(0.0);
-   //    msg.vzs.push_back(0.0);
-   //    msg.yaws.push_back(th + 0.5 * M_PI * (t / T));
+    //    msg.ts.push_back(t);
+    //    msg.xs.push_back(0.0); // R * std::cos(th) - R);
+    //    msg.ys.push_back(0.0); // R * std::sin(th) );
+    //    msg.zs.push_back(1.0);
+    //    msg.vxs.push_back(0.0);
+    //    msg.vys.push_back(0.0);
+    //    msg.vzs.push_back(0.0);
+    //    msg.yaws.push_back(th + 0.5 * M_PI * (t / T));
 
-   //    t += dt;
-   //    x += vx * dt;
-   //    if (t > T)
-   //      break;
-   //  }
+    //    t += dt;
+    //    x += vx * dt;
+    //    if (t > T)
+    //      break;
+    //  }
 
-   //  // next T seconds go forward
-   //  while (true) {
-   //    double f = (t - T) / T;
+    //  // next T seconds go forward
+    //  while (true) {
+    //    double f = (t - T) / T;
 
-   //    msg.ts.push_back(t);
-   //    msg.xs.push_back(0.0);     // R * std::cos(th) - R);
-   //    msg.ys.push_back(4.0 * f); // R * std::sin(th) );
-   //    msg.zs.push_back(0.5);
-   //    msg.vxs.push_back(0.0);
-   //    msg.vys.push_back(0.0);
-   //    msg.vzs.push_back(0.0);
-   //    msg.yaws.push_back(M_PI * 0.5);
+    //    msg.ts.push_back(t);
+    //    msg.xs.push_back(0.0);     // R * std::cos(th) - R);
+    //    msg.ys.push_back(4.0 * f); // R * std::sin(th) );
+    //    msg.zs.push_back(0.5);
+    //    msg.vxs.push_back(0.0);
+    //    msg.vys.push_back(0.0);
+    //    msg.vzs.push_back(0.0);
+    //    msg.yaws.push_back(M_PI * 0.5);
 
-   //    t += dt;
-   //    x += vx * dt;
+    //    t += dt;
+    //    x += vx * dt;
 
-   //    if (f > 1)
-   //      break;
-   //  }
-   //  // next 5 seconds go forward
-   //  while (true) {
-   //    double f = (t - 2 * T) / T;
+    //    if (f > 1)
+    //      break;
+    //  }
+    //  // next 5 seconds go forward
+    //  while (true) {
+    //    double f = (t - 2 * T) / T;
 
-   //    msg.ts.push_back(t);
-   //    msg.xs.push_back(0.0);           // R * std::cos(th) - R);
-   //    msg.ys.push_back(4 * (1.0 - f)); // R * std::sin(th) );
-   //    msg.zs.push_back(0.5);
-   //    msg.vxs.push_back(0.0);
-   //    msg.vys.push_back(0.0);
-   //    msg.vzs.push_back(0.0);
-   //    msg.yaws.push_back(M_PI * 0.5);
+    //    msg.ts.push_back(t);
+    //    msg.xs.push_back(0.0);           // R * std::cos(th) - R);
+    //    msg.ys.push_back(4 * (1.0 - f)); // R * std::sin(th) );
+    //    msg.zs.push_back(0.5);
+    //    msg.vxs.push_back(0.0);
+    //    msg.vys.push_back(0.0);
+    //    msg.vzs.push_back(0.0);
+    //    msg.yaws.push_back(M_PI * 0.5);
 
-   //    t += dt;
-   //    x += vx * dt;
-   //    if (f > 1)
-   //      break;
-   //  }
+    //    t += dt;
+    //    x += vx * dt;
+    //    if (f > 1)
+    //      break;
+    //  }
 
-   //  send(msg);
+    //  send(msg);
   }
 
   void send(dasc_msgs::msg::QuadTrajectory msg) {

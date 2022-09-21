@@ -27,6 +27,7 @@ RUN rm -rf /var/lib/apt/lists
 # RUN meson setup build .
 # RUN ninja -C build install
 
+WORKDIR /root/px4_ros_com_ros2
 
 RUN echo "source /opt/ros/galactic/setup.bash" >> /root/.bashrc
 RUN echo "source /root/px4_ros_com_ros2/install/setup.bash" >> /root/.bashrc

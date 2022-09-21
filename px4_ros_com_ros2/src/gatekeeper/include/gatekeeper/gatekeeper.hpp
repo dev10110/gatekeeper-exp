@@ -6,20 +6,19 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <dasc_msgs/msg/quad_setpoint.hpp>
 #include <dasc_msgs/msg/quad_trajectory.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 
-#include <octomap/octomap.h>
-#include <pcl/common/distances.h>
-#include <pcl/common/transforms.h>
-#include <pcl/filters/passthrough.h>
-#include <pcl/filters/voxel_grid.h>
+//#include <pcl/common/distances.h>
+//#include <pcl/common/transforms.h>
+//#include <pcl/filters/passthrough.h>
+//#include <pcl/filters/voxel_grid.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/kdtree/kdtree_flann.h>
 
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -29,12 +28,8 @@
 #include "gatekeeper/transforms.hpp"
 #include "gatekeeper/visualization.hpp"
 
-#include <mutex>
-#include <thread>
-
 using PCLPoint = pcl::PointXYZ;
 using PCLPointCloud = pcl::PointCloud<PCLPoint>;
-using OcTreeT = octomap::OcTree;
 
 namespace ph = std::placeholders;
 
@@ -52,7 +47,6 @@ protected:
       m_nominalTrajSub;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       m_vehicleLocalPositionSub;
-  rclcpp::Subscription<dasc_msgs::msg::QuadSetpoint>::SharedPtr m_targetSub;
 
   rclcpp::Publisher<dasc_msgs::msg::QuadTrajectory>::SharedPtr
       m_committedTrajPub;
@@ -61,68 +55,30 @@ protected:
 
   std::shared_ptr<tf2_ros::Buffer> m_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> m_tf_listener;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr occupied_pcl_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr free_pcl_pub_;
-  rclcpp::TimerBase::SharedPtr pub_timer_;
   rclcpp::TimerBase::SharedPtr traj_timer_;
 
-  // octree
-  std::shared_ptr<OcTreeT> m_octree;
-
-  // pcl
-  pcl::PassThrough<PCLPoint> pass_x, pass_y, pass_z;
-
-  // lock on octree
-  std::mutex mutex_octree;
-
   // parameters
-  double m_res = 0.05;
-  double m_voxel_leaf_size = 0.01;
-  int m_treeDepth = 16;
-  int m_maxTreeDepth = 16;
-  int m_searchDepth = 16;
-  double m_maxRange = 5.0;
-  double probHit = 0.7;
-  double probMiss = 0.4;
-  double thresMin = 0.12;
-  double thresMax = 0.97;
-  double numMax = std::numeric_limits<double>::max();
-  double numMin = -std::numeric_limits<double>::max();
-  double m_zmin = 0.0;
-  double m_zmax = 3.0;
-  double m_safety_radius = 0.15;
-
+  double m_safety_radius_xy = 0.35;
+  double m_safety_radius_z = 0.15;
   std::string m_worldFrameId = "world";
 
 
   // storage
+  PCLPointCloud pc;
+  pcl::KdTreeFLANN<PCLPoint> kdtree;
   rclcpp::Time last_pos_t;
   dyn::State last_quad_state{};
-  dyn::State target{};
-  bool received_target = false;
-  uint8_t drop_msg = 0;
 
   // functions
-  void insertScan(const geometry_msgs::msg::Vector3 &sensorOrigin,
-                  const PCLPointCloud &pc);
-
-  void cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
-
   void
   nominalTraj_callback(const dasc_msgs::msg::QuadTrajectory::SharedPtr msg);
 
-  void target_callback(const dasc_msgs::msg::QuadSetpoint::SharedPtr msg);
-  
   void traj_timer_callback();
-
-
+  
+  void cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
   void localPosition_callback(
       const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);
-
-  void publish_occupied_pcl();
-  void publish_free_pcl();
-  void assume_free_space();
 
   bool isSafe(double x, double y, double z);
   bool isSafe(double x, double y, double z, double r);

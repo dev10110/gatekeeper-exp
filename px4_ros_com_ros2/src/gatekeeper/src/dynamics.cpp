@@ -87,15 +87,20 @@ Input tracking_controller(State &x, State &x_des) {
     u.yaw_rate += 1.0 * std::min(M_PI / 4.0, std::max(angle_diff, -M_PI / 4.0));
   }
 
-
   double a_max = 2.0;
 
-  if (u.ax > a_max) u.ax = a_max;
-  if (u.ax < -a_max) u.ax = -a_max;
-  if (u.ay > a_max) u.ay = a_max;
-  if (u.az > a_max) u.az = a_max;
-  if (u.ay < -a_max) u.ay = -a_max;
-  if (u.az < -a_max) u.az = -a_max;
+  if (u.ax > a_max)
+    u.ax = a_max;
+  if (u.ax < -a_max)
+    u.ax = -a_max;
+  if (u.ay > a_max)
+    u.ay = a_max;
+  if (u.az > a_max)
+    u.az = a_max;
+  if (u.ay < -a_max)
+    u.ay = -a_max;
+  if (u.az < -a_max)
+    u.az = -a_max;
 
   return u;
 }
@@ -212,15 +217,14 @@ Trajectory simulate_target_hover(double t0, State &x0, State &target,
 
   for (size_t i = 0; i < N_nom; i++) {
 
-	  Input u{};
+    Input u{};
     if (dt * i >= 0.000) { // if more than 50 ms from start
-    u = tracking_controller(x, target);
-    }
-    else{
-    u.ax = 0.0;
-    u.ay = 0.0;
-    u.az = 0.0;
-    u.yaw_rate = 0.0;
+      u = tracking_controller(x, target);
+    } else {
+      u.ax = 0.0;
+      u.ay = 0.0;
+      u.az = 0.0;
+      u.yaw_rate = 0.0;
     }
 
     P.ts.push_back(t);
