@@ -116,7 +116,7 @@ void Mapper::assume_free_space() {
   for (double x = m_free_x_min; x <= m_free_x_max; x += 0.05) {
     for (double y = m_free_y_min; y <= m_free_y_max; y += 0.05) {
       for (double z = m_free_z_min; z <= m_free_z_max; z += 0.05) {
-        m_octree->updateNode(x, y, z, (float)-0.9, true);
+        m_octree->updateNode(x, y, z, (float)-1.0, true);
       }
     }
   }
@@ -366,7 +366,7 @@ void Mapper::publish_unsafe_pcl(const geometry_msgs::msg::Vector3 &origin) {
   }
 
   const double R = m_publish_radius;
-  const double m_theta_res = 10.0 * M_PI/180.0; // std::atan2(0.1, R);
+  const double m_theta_res = 10.0 * M_PI / 180.0; // std::atan2(0.1, R);
   const double m_phi_res = 10.0 * M_PI / 180.0;   // std::atan2(0.1, R);
 
   const double quad_x = origin.x;
@@ -407,25 +407,27 @@ void Mapper::publish_unsafe_pcl(const geometry_msgs::msg::Vector3 &origin) {
     }
   }
 
-   // also add in known obstacles
-   //for (auto it = m_octree->begin(m_maxTreeDepth), end = m_octree->end();
-   //     it != end; ++it) {
-  octomap::point3d min_pt (quad_x - R, quad_y - R, quad_z - R);
-  octomap::point3d max_pt (quad_x + R, quad_y + R, quad_z + R);
-  for(OcTreeT::leaf_bbx_iterator it =  m_octree->begin_leafs_bbx(min_pt,max_pt),
-       end=m_octree->end_leafs_bbx(); it!= end; ++it){     
-       //PCLPoint q(it.getX(), it.getY(), it.getZ());
-       //   if (p.x > q.x - R && p.x < q.x + R) {
-       //     if (p.y > q.y - R && p.y < q.y + R) {
-       //       if (p.z > q.z - R && p.z < q.z + R) {
-     if (m_octree->isNodeOccupied(*it)) {
-         PCLPoint q(it.getX(), it.getY(), it.getZ());
-         pc.push_back(q);
-       }
-         //   } 
-      // }
+  // also add in known obstacles
+  // for (auto it = m_octree->begin(m_maxTreeDepth), end = m_octree->end();
+  //     it != end; ++it) {
+  octomap::point3d min_pt(quad_x - R, quad_y - R, quad_z - R);
+  octomap::point3d max_pt(quad_x + R, quad_y + R, quad_z + R);
+  for (OcTreeT::leaf_bbx_iterator
+           it = m_octree->begin_leafs_bbx(min_pt, max_pt),
+           end = m_octree->end_leafs_bbx();
+       it != end; ++it) {
+    // PCLPoint q(it.getX(), it.getY(), it.getZ());
+    //   if (p.x > q.x - R && p.x < q.x + R) {
+    //     if (p.y > q.y - R && p.y < q.y + R) {
+    //       if (p.z > q.z - R && p.z < q.z + R) {
+    if (m_octree->isNodeOccupied(*it)) {
+      PCLPoint q(it.getX(), it.getY(), it.getZ());
+      pc.push_back(q);
+    }
+    //   }
     // }
-   }
+    // }
+  }
 
   if (pc.size() == 0)
     return;

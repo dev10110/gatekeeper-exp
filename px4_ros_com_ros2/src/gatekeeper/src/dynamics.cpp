@@ -265,9 +265,14 @@ Trajectory simulate_target_hover(double t0, State &x0, State &target,
 Trajectory simulate_extend_hover(double t0, State &x0, Trajectory &P_nom,
                                  size_t N_nom, size_t N_ext, double dt) {
 
-  Trajectory P_des = interpolate(P_nom, dt);
 
   Trajectory P{};
+
+  
+  if (P_nom.ts.size() < 2) {return P;};
+
+  Trajectory P_des = interpolate(P_nom, dt);
+
 
   // make a copy
   State x(x0);
@@ -283,6 +288,7 @@ Trajectory simulate_extend_hover(double t0, State &x0, Trajectory &P_nom,
       ind++;
       if (ind >= P_des.xs.size()) {
         done = true;
+	break;
       }
     }
 

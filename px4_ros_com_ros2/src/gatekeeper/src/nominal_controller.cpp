@@ -35,7 +35,7 @@ public:
         "/nominal_trajectory", 10);
 
     timer_ = this->create_wall_timer(
-        500ms, std::bind(&NominalController::timer_callback, this));
+        200ms, std::bind(&NominalController::timer_callback, this));
 
     path_pub_ =
         this->create_publisher<nav_msgs::msg::Path>("nominal_traj_viz", 10);
@@ -117,7 +117,7 @@ private:
     key_t.push_back(0.0);
     key_x.push_back(-1.0);
     key_y.push_back(0.0);
-    key_z.push_back(1.0);
+    key_z.push_back(1.25);
     key_yaw.push_back(0.0);
 
     // // scan 360
@@ -146,40 +146,40 @@ private:
     // key_yaw.push_back(0.0);
 
     // move forward
+    key_t.push_back(key_t.back() + 35.0);
+    key_x.push_back(2.0);
+    key_y.push_back(key_y.back());
+    key_z.push_back(key_z.back());
+    key_yaw.push_back(0.0);
+
+    // move back
+    key_t.push_back(key_t.back() + 35.0);
+    key_x.push_back(-1.0);
+    key_y.push_back(key_y.back());
+    key_z.push_back(key_z.back());
+    key_yaw.push_back(0.0);
+
+    // // move down
+    key_t.push_back(key_t.back() + 10.0);
+    key_x.push_back(key_x.back());
+    key_y.push_back(key_y.back());
+    key_z.push_back(0.5);
+    key_yaw.push_back(0.0);
+    
+    
+    // move forward
     key_t.push_back(key_t.back() + 15.0);
-    key_x.push_back(1.0);
+    key_x.push_back(2.0);
     key_y.push_back(key_y.back());
     key_z.push_back(key_z.back());
     key_yaw.push_back(0.0);
 
     // move back
     key_t.push_back(key_t.back() + 15.0);
-    key_x.push_back(0.0);
+    key_x.push_back(-1.0);
     key_y.push_back(key_y.back());
     key_z.push_back(key_z.back());
     key_yaw.push_back(0.0);
-
-    // // move down
-    // key_t.push_back(key_t.back() + 5.0);
-    // key_x.push_back(key_x.back());
-    // key_y.push_back(key_y.back());
-    // key_z.push_back(0.5);
-    // key_yaw.push_back(0.0);
-    //
-    //
-    // // move forward
-    // key_t.push_back(key_t.back() + 15.0);
-    // key_x.push_back(1.0);
-    // key_y.push_back(key_y.back());
-    // key_z.push_back(key_z.back());
-    // key_yaw.push_back(0.0);
-
-    // // move back
-    // key_t.push_back(key_t.back() + 15.0);
-    // key_x.push_back(0.0);
-    // key_y.push_back(key_y.back());
-    // key_z.push_back(key_z.back());
-    // key_yaw.push_back(0.0);
 
     // move down
     key_t.push_back(key_t.back() + 5.0);

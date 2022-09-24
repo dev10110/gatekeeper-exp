@@ -12,6 +12,8 @@ namespace gatekeeper {
 
 Gatekeeper::Gatekeeper() : Node("gatekeeper") {
 
+  RCLCPP_INFO(this->get_logger(), "starting gatekeeper..");
+
   // rclcpp::Parameter simTime("use_sim_time", rclcpp::ParameterValue(true));
   // this->set_parameter(simTime);
 
@@ -24,11 +26,10 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
 
   // initialize pubs and subs
   m_pointCloudSub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "/occupied_pcl", 10,
-      std::bind(&Gatekeeper::cloud_callback, this, ph::_1));
+      "/unsafe_pcl", 1, std::bind(&Gatekeeper::cloud_callback, this, ph::_1));
 
   m_nominalTrajSub = this->create_subscription<dasc_msgs::msg::QuadTrajectory>(
-      "/nominal_trajectory", 10,
+      "/nominal_trajectory", 2,
       std::bind(&Gatekeeper::nominalTraj_callback, this, ph::_1));
 
   m_vehicleLocalPositionSub =
@@ -41,13 +42,13 @@ Gatekeeper::Gatekeeper() : Node("gatekeeper") {
   m_tf_listener = std::make_unique<tf2_ros::TransformListener>(*m_buffer_);
 
   m_committedTrajPub = this->create_publisher<dasc_msgs::msg::QuadTrajectory>(
-      "/committed_trajectory", 10);
+      "/committed_trajectory", 1);
 
   m_extTrajVizPub =
-      this->create_publisher<nav_msgs::msg::Path>("/ext_traj_viz", 5);
+      this->create_publisher<nav_msgs::msg::Path>("/ext_traj_viz", 2);
 
   m_committedTrajVizPub =
-      this->create_publisher<nav_msgs::msg::Path>("/committed_traj_viz", 5);
+      this->create_publisher<nav_msgs::msg::Path>("/committed_traj_viz", 2);
 
   // traj_timer_ = this->create_wall_timer(
   //    100ms, std::bind(&Gatekeeper::traj_timer_callback, this));
@@ -76,10 +77,14 @@ void Gatekeeper::publish_extended_traj(
 void Gatekeeper::cloud_callback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
+  RCLCPP_INFO(this->get_logger(), "Received new pointcloud msg");
+
   auto start = std::chrono::steady_clock::now();
 
   // convert ros msg into pcl
   pcl::fromROSMsg(*msg, pc);
+
+  RCLCPP_INFO(this->get_logger(), "converted to pc");
 
   // insert into kd tree
   kdtree.setInputCloud(pc.makeShared());
@@ -91,7 +96,9 @@ void Gatekeeper::cloud_callback(
 }
 
 // check if a point is safe
-bool Gatekeeper::isSafe(double x, double y, double z) {
+bool Gatekeeper::isSafe(double x, double y, double z, double r) {
+
+  // r is a multiplier
 
   PCLPoint p(x, y, z);
 
@@ -107,21 +114,22 @@ bool Gatekeeper::isSafe(double x, double y, double z) {
   // check the point
   PCLPoint q = pc[idx[0]];
 
-  if (std::abs(p.x - q.x) < m_safety_radius_xy) {
-    return false;
-  }
-  if (std::abs(p.y - q.y) < m_safety_radius_xy) {
-    return false;
-  }
-  if (std::abs(p.z - q.z) < m_safety_radius_z) {
-    return false;
+  if (std::abs(p.x - q.x) < r * m_safety_radius_xy) {
+    if (std::abs(p.y - q.y) < r * m_safety_radius_xy) {
+      if (std::abs(p.z - q.z) < r * m_safety_radius_z) {
+        RCLCPP_WARN(this->get_logger(),
+                    "TOO CLOSE: point (%f, %f, %f) against (%f, %f, %f)", p.x,
+                    p.y, p.y, q.x, q.y, q.z);
+        return false;
+      }
+    }
   }
 
   return true;
 }
 
 // check if a point, and a box around the point are safe
-bool Gatekeeper::isSafe(double x, double y, double z, double r) {
+bool Gatekeeper::isSafe(double x, double y, double z) {
 
   //  // first check the center
   //  if (!isSafe(x, y, z))
@@ -143,43 +151,41 @@ bool Gatekeeper::isSafe(double x, double y, double z, double r) {
 }
 
 // returns the largest number of steps in P that can be safe
-bool Gatekeeper::isSafe(dyn::Trajectory P) { return true; }
-//
-//   double R = m_safety_radius; // margin radius
-//
-//   size_t N = P.ts.size();
-//
-//   if (N <= 0)
-//     return false;
-//
-//   // at least one elements in P
-//
-//   // check the end point - likely to be an intersection
-//   if (!isSafe(P.xs[N - 1].x, P.xs[N - 1].y, P.xs[N - 1].z, 2 * R)) {
-//     RCLCPP_INFO(this->get_logger(), "[REJECTED] endpoint collides");
-//     return false;
-//   }
-//
-//   // check that we have come to a stop at the end
-//   double vx = P.xs[N - 1].vx;
-//   double vy = P.xs[N - 1].vy;
-//   double vz = P.xs[N - 1].vz;
-//   double v = vx * vx + vy * vy + vz * vz;
-//   if (v > 0.01) {
-//     RCLCPP_INFO(this->get_logger(), "[REJECTED] too high speed");
-//     return false;
-//   } // more than 10cm/s
-//
-//   // check the rest
-//   for (size_t i = 0; i < N - 1; i++) {
-//     if (!isSafe(P.xs[i].x, P.xs[i].y, P.xs[i].z, R)) {
-//       RCLCPP_INFO(this->get_logger(), "[REJECTED] intermediate pt collides");
-//       return false;
-//     }
-//   }
-//
-//   return true;
-// }
+bool Gatekeeper::isSafe(dyn::Trajectory P) {
+
+  size_t N = P.ts.size();
+
+  if (N <= 0)
+    return false;
+
+  // at least one elements in P
+
+  // check the end point - likely to be an intersection
+  if (!isSafe(P.xs[N - 1].x, P.xs[N - 1].y, P.xs[N - 1].z, 1.5)) {
+    RCLCPP_INFO(this->get_logger(), "[REJECTED] endpoint collides");
+    return false;
+  }
+
+  // check that we have come to a stop at the end
+  double vx = P.xs[N - 1].vx;
+  double vy = P.xs[N - 1].vy;
+  double vz = P.xs[N - 1].vz;
+  double v = vx * vx + vy * vy + vz * vz;
+  if (v > 0.01) {
+    RCLCPP_INFO(this->get_logger(), "[REJECTED] too high speed");
+    return false;
+  } // more than 10cm/s
+
+  // check the rest
+  for (size_t i = 0; i < N - 1; i++) {
+    if (!isSafe(P.xs[i].x, P.xs[i].y, P.xs[i].z, 1.0)) {
+      RCLCPP_INFO(this->get_logger(), "[REJECTED] intermediate pt collides");
+      return false;
+    }
+  }
+
+  return true;
+}
 
 dasc_msgs::msg::QuadTrajectory direct_copy(dyn::Trajectory P, int i = -1) {
 
@@ -275,7 +281,7 @@ void Gatekeeper::nominalTraj_callback(
   // RCLCPP_INFO(this->get_logger(), "t0: %f, t_back: %f", t0,
   // nom_msg->ts.back());
 
-  if (t0 > nom_msg->ts.back()) {
+  if (t0 >= nom_msg->ts.back()) {
     // committed message is too old - ignore
     RCLCPP_INFO(this->get_logger(),
                 "[REJECTING] nominal trajectory is too old");
@@ -304,7 +310,7 @@ void Gatekeeper::nominalTraj_callback(
     }
   }
 
-  if (P.ts.size() == 0) {
+  if (P.ts.size() <= 1) {
     return;
   }
 
@@ -329,6 +335,9 @@ void Gatekeeper::nominalTraj_callback(
     //}
   }
 
+  if (P_ext.ts.size() < 2) {return;}
+
+
   // publish the extended trajectory
   dasc_msgs::msg::QuadTrajectory ext_msg = direct_copy(P_ext);
   ext_msg.header = nom_msg->header;
@@ -338,6 +347,7 @@ void Gatekeeper::nominalTraj_callback(
   if (!isSafe(P_ext))
     return;
 
+  RCLCPP_INFO(this->get_logger(), "publishing committed traj");
   // yes trajectory is safe, so publish
   dasc_msgs::msg::QuadTrajectory com_msg = direct_copy(P_ext);
   com_msg.header = nom_msg->header;
